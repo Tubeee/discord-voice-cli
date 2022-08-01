@@ -50,12 +50,9 @@ function onMessage(msg) {
     switch (msg.op) {
         case 0:
             onEvent(msg)
-        case 7: // Reconnect
-        case 9: // Invalid Session
             break
         case 10: // Hello
             setInterval(() => ws.send(JSON.stringify({ op: 1, d: seq })), msg.d.heartbeat_interval)
-        case 11: // Heartbeat ACK
     }
 }
 
@@ -166,7 +163,7 @@ function connectVoice(guildId, channelId) { // [3]
     }))
 }
 
-
+/*
 WebSocket.prototype._send = WebSocket.prototype.send
 WebSocket.prototype.send = function (data) {
     console.log('WS send', JSON.parse(data))
@@ -178,3 +175,4 @@ global.init = init
 global.connectVoice = connectVoice
 global.voiceInstance = voiceInstance
 global.VoiceEngine = VoiceEngine
+*/
