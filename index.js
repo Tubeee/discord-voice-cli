@@ -1,6 +1,7 @@
 const WebSocket = require('ws')
+global.features = { declareSupported() { } } // discord_voice/index.js crashes if this is not defined
 const VoiceEngine = require('discord_voice')
-const randomUUID = require('crypto').randomUUID
+const { randomUUID } = require('crypto')
 
 const CLIENT_CODECS = [{
     type: "audio",
@@ -15,7 +16,7 @@ VoiceEngine.setOutputDevice('default')
 const ws = new WebSocket('wss://gateway.discord.gg/?encoding=json&v=9')
 ws.on('message', onMessage)
 
-function init(token) { // [1]
+function login(token) { // [1]
     ws.send(JSON.stringify(
         {
             op: 2,
@@ -45,7 +46,6 @@ function init(token) { // [1]
 
 let seq = 0
 function onMessage(msg) {
-    //debugger
     msg = JSON.parse(msg)
     switch (msg.op) {
         case 0:
@@ -70,7 +70,7 @@ function onEvent(msg) {
         case 'VOICE_SERVER_UPDATE': // [5]
             const { endpoint, token, guild_id, channel_id } = msg.d
             voiceGateway = new WebSocket('wss://' + endpoint + '?v=7')
-            voiceGateway.on('message', msg => console.log('VoiceGateway recv', JSON.parse(msg)))
+            if (process.env.DEBUG) voiceGateway.on('message', msg => console.log('VoiceGateway recv', JSON.parse(msg)))
             voiceGateway.on('message', onVoiceMessage)
             voiceGateway.on('open', e => voiceGateway.send(JSON.stringify({
                 op: 0,
@@ -125,37 +125,27 @@ function onVoiceMessage(msg) {
 }
 
 function createVoiceConnectionCallback(err, { protocol, address, port }) { // [8]
-    if (err) {
-        console.log('createVoiceConnection error', err)
-    } else {
-        console.log('Connected')
-        voiceGateway.send(JSON.stringify({
-            op: 1,
-            d: {
-                protocol,
-                address,
-                port,
-                mode: 'aead_aes256_gcm_rtpsize',
-                rtc_connection_id: randomUUID(), //this is a client-side generated (in javascript) random UUID4
-                data: {
-                    address,
-                    port,
-                    mode: 'aead_aes256_gcm_rtpsize',
-                },
-                codecs: CLIENT_CODECS
-            }
-        }))
-    }
+    if (err) return console.error('createVoiceConnection error', err)
+
+    console.log('Voice Connected', protocol, address, port)
+    voiceInstance.getEncryptionModes(([mode]) => voiceGateway.send(JSON.stringify({
+        op: 1,
+        d: {
+            protocol, address, port, mode,
+            rtc_connection_id: randomUUID(), //this is a client-side generated (in javascript) random UUID4
+            data: { address, port, mode },
+            codecs: CLIENT_CODECS
+        }
+    })))
 }
 
 
-function connectVoice(guildId, channelId) { // [3]
+function connectVoice(guild_id, channel_id) { // [3]
     //guildId null if DM channel
     ws.send(JSON.stringify({
         op: 4,
         d: {
-            guild_id: guildId,
-            channel_id: channelId,
+            guild_id, channel_id,
             self_mute: false,
             self_deaf: false,
             self_video: false
@@ -163,16 +153,21 @@ function connectVoice(guildId, channelId) { // [3]
     }))
 }
 
-/*
-WebSocket.prototype._send = WebSocket.prototype.send
-WebSocket.prototype.send = function (data) {
-    console.log('WS send', JSON.parse(data))
-    WebSocket.prototype._send.call(this, data)
+module.exports = {
+    login,
+    connectVoice
 }
 
-ws.on('message', msg => console.debug('RGateway recv', JSON.parse(msg)))
-global.init = init
-global.connectVoice = connectVoice
-global.voiceInstance = voiceInstance
-global.VoiceEngine = VoiceEngine
-*/
+if (process.env.DEBUG) {
+    WebSocket.prototype._send = WebSocket.prototype.send
+    WebSocket.prototype.send = function (data) {
+        console.log('WS send', JSON.parse(data))
+        WebSocket.prototype._send.call(this, data)
+    }
+    
+    //ws.on('message', msg => console.debug('RGateway recv', JSON.parse(msg)))
+    global.login = login
+    global.connectVoice = connectVoice
+    global.voiceInstance = voiceInstance
+    global.VoiceEngine = VoiceEngine
+}
